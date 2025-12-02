@@ -1,0 +1,13 @@
+[options]
+multilib = false
+picocrt = false
+atomic-ungetc = false
+thread-local-storage = false
+io-long-long = true
+format-default = integer
+includedir = picolibc/riscv64-unknown-elf/include
+libdir = picolibc/riscv64-unknown-elf/lib
+
+[properties]
+cross_file = ['/mnt/c/Users/sreej/OneDrive/Documents/GitHub/Team_94_LP_CyberSecurity/LP_Constraint_Env_Sim/build/software/libc/cross.txt']
+
