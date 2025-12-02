@@ -69,7 +69,7 @@ GCC_FLAGS = {
     "standard+debug":       "-march=rv32im         -mabi=ilp32",
     "imac":                 "-march=rv32imac       -mabi=ilp32",
     "imac+debug":           "-march=rv32imac       -mabi=ilp32",
-    "full":                 "-march=rv32im         -mabi=ilp32",
+    "full":                 "-march=rv32im_zicsr   -mabi=ilp32",
     "full+cfu":             "-march=rv32im         -mabi=ilp32",
     "full+debug":           "-march=rv32im         -mabi=ilp32",
     "full+cfu+debug":       "-march=rv32im         -mabi=ilp32",

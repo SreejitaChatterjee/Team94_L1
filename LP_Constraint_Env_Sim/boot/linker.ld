@@ -1,13 +1,13 @@
-INCLUDE generated/output_format.ld
+INCLUDE ../build/sim/software/include/generated/output_format.ld
 ENTRY(_start)
 
 __DYNAMIC = 0;
 
-INCLUDE generated/regions.ld
+INCLUDE ../build/sim/software/include/generated/regions.ld
 
-/* Default sizes - small for embedded (64KB main_ram) */
-_stack_size = DEFINED(_stack_size) ? _stack_size : 8k;
-_heap_size  = DEFINED(_heap_size)  ? _heap_size  : 8k;
+/* Memory sizes - PQC crypto needs larger stack for key operations */
+_stack_size = DEFINED(_stack_size) ? _stack_size : 64k;
+_heap_size  = DEFINED(_heap_size)  ? _heap_size  : 128k;
 
 SECTIONS
 {
