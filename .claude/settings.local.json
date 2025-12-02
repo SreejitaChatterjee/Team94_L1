@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(make clean:*)",
+      "Bash(litex_bare_metal_demo:*)",
+      "Bash(python3:*)",
+      "Bash(wsl --list --verbose:*)",
+      "Bash(where:*)",
+      "Bash(echo:*)",
+      "Bash(powershell.exe -Command \"wsl --status\")",
+      "Bash(powershell.exe -Command \"wsl --list --online\")",
+      "Bash(powershell.exe -Command \"Start-Process wsl -ArgumentList ''--install -d Ubuntu-24.04'' -Verb RunAs -Wait\")",
+      "Bash(powershell.exe -Command \"wsl --install -d Ubuntu-24.04\")",
+      "Bash(powershell.exe -Command \"wsl --list --verbose\")",
+      "Bash(wsl -d Ubuntu-24.04 -- bash -c \"cd /mnt/c/Users/sreej/OneDrive/Documents/GitHub/Team_94_LP_CyberSecurity/LP_Constraint_Env_Sim && pwd && ls -la\":*)",
+      "Bash(wsl -d Ubuntu-24.04 -- bash -c \"sudo apt update -y\")",
+      "Bash(wsl -d Ubuntu-24.04 -- bash -c \"python3 --version && pip3 --version\")",
+      "Bash(wsl -d Ubuntu-24.04 -- bash -c:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
