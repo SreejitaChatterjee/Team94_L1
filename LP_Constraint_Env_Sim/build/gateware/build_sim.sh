@@ -1,2 +1,0 @@
-rm -rf obj_dir/
-make -C . -f /mnt/c/Users/sreej/OneDrive/Documents/GitHub/Team_94_LP_CyberSecurity/LP_Constraint_Env_Sim/litex/litex/build/sim/core/Makefile CC_SRCS="--cc /mnt/c/Users/sreej/OneDrive/Documents/GitHub/Team_94_LP_CyberSecurity/LP_Constraint_Env_Sim/pythondata-cpu-vexriscv/pythondata_cpu_vexriscv/verilog/VexRiscv.v --cc /mnt/c/Users/sreej/OneDrive/Documents/GitHub/Team_94_LP_CyberSecurity/LP_Constraint_Env_Sim/build/gateware/sim.v "    OPT_LEVEL=O3   

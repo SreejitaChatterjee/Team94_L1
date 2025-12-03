@@ -489,6 +489,7 @@ def main():
     if soc_kwargs["uart_name"] == "serial":
         soc_kwargs["uart_name"] = "sim"
         sim_config.add_module("serial2console", "serial")
+        sim_config.add_module("serial2tcp", "serial", args={"port": "1234"})
 
     # Create config SoC that will be used to prepare/configure real one.
     conf_soc = SimSoC(**soc_kwargs)
