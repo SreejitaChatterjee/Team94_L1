@@ -28,7 +28,12 @@
       "Bash(git rm:*)",
       "Bash(find:*)",
       "Bash(git config:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(git -C \"C:\\Users\\sreej\\OneDrive\\Documents\\GitHub\\Team94_L1\" status)",
+      "Bash(git -C \"C:\\Users\\sreej\\OneDrive\\Documents\\GitHub\\Team94_L1\" log --oneline -5)",
+      "Bash(git -C \"C:\\Users\\sreej\\OneDrive\\Documents\\GitHub\\Team94_L1\" remote -v)",
+      "Bash(git -C:*)",
+      "Bash(git -C \"C:\\Users\\sreej\\OneDrive\\Documents\\GitHub\\Team94_L1\" commit -m \"$(cat <<''EOF''\nRemove LP_Constraint_Env_Sim directory and update local settings\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
