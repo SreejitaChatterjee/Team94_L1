@@ -1,3 +1,0 @@
-include LICENSE
-include tools/strace_tailor.sh
-graft examples

@@ -1,1 +1,35 @@
+# Build directories
 LP_Constraint_Env_Sim/build/
+MAIN/build/
+
+# Compiler dependency files (contain absolute paths)
+*.d
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+litex-env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

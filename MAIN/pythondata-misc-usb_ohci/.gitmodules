@@ -1,3 +1,0 @@
-[submodule "pythondata_misc_usb_ohci/verilog/ext/SpinalHDL"]
-	path = pythondata_misc_usb_ohci/verilog/ext/SpinalHDL
-	url = https://github.com/SpinalHDL/SpinalHDL.git

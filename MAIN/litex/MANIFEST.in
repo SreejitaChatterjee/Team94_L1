@@ -1,9 +1,0 @@
-graft litex
-include CHANGES.md
-include CONTRIBUTORS
-graft doc
-
-exclude litex_setup.py
-
-prune test
-
