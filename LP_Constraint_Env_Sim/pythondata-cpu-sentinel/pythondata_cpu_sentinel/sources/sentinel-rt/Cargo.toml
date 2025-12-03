@@ -1,0 +1,28 @@
+[package]
+name = "sentinel-rt"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+riscv = { version = "0.11.1", features = ["critical-section-single-hart"] }
+riscv-rt = "0.12.2"
+
+[dev-dependencies]
+atoi = { version = "2.0.0", default-features = false }
+bitvec = { version = "1.0.1", default-features = false }
+critical-section = { version = "1.1.2", default-features = false }
+heapless = { version = "0.8.0", default-features = false, features = ["portable-atomic-unsafe-assume-single-core"] }
+once_cell = { version = "1.19.0", default-features = false }
+panic-halt = "0.2.0"
+portable-atomic = { version = "1.6.0", features = ["unsafe-assume-single-core"] }
+
+# Required for `cargo fix`.
+[lib]
+name = "sentinel_rt"
+test = false
+bench = false
+
+[lints]
+workspace = true

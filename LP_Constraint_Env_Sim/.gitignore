@@ -1,0 +1,10 @@
+# Python virtual environments
+venv/
+litex-env/
+__pycache__/
+*.pyc
+
+# Build artifacts
+*.o
+*.bin
+*.elf

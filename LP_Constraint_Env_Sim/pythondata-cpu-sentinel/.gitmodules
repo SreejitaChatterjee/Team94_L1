@@ -1,0 +1,12 @@
+[submodule "pythondata_cpu_sentinel/sources/tests/upstream/riscv-tests"]
+	path = pythondata_cpu_sentinel/sources/tests/upstream/riscv-tests
+	url = https://github.com/riscv/riscv-tests
+[submodule "pythondata_cpu_sentinel/sources/tests/formal/riscv-formal"]
+	path = pythondata_cpu_sentinel/sources/tests/formal/riscv-formal
+	url = https://github.com/YosysHQ/riscv-formal
+[submodule "pythondata_cpu_sentinel/sources/tests/riscof/sail-riscv"]
+	path = pythondata_cpu_sentinel/sources/tests/riscof/sail-riscv
+	url = https://github.com/riscv/sail-riscv.git
+[submodule "pythondata_cpu_sentinel/sources/tests/riscof/riscv-arch-test"]
+	path = pythondata_cpu_sentinel/sources/tests/riscof/riscv-arch-test
+	url = https://github.com/riscv-non-isa/riscv-arch-test
