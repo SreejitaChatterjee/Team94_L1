@@ -13,13 +13,13 @@
 \usepackage{enumitem}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
-\usepackage{helvet}                    % Helvetica font
-\usepackage{setspace}                  % Line spacing
-\renewcommand{\familydefault}{\sfdefault}  % Use Helvetica as default
-\setstretch{1.15}                      % 1.15 line spacing for entire document
+\usepackage{helvet}
+\usepackage{setspace}
+\renewcommand{\familydefault}{\sfdefault}
+\setstretch{1.1}
 
-% Page geometry
-\geometry{margin=0.75in, top=1in, bottom=1in}
+% Page geometry - tighter margins
+\geometry{margin=0.6in, top=0.8in, bottom=0.8in}
 
 % Colors
 \definecolor{codegreen}{rgb}{0,0.6,0}
@@ -34,13 +34,12 @@
     keywordstyle=\color{blue},
     numberstyle=\tiny\color{codegray},
     stringstyle=\color{codepurple},
-    basicstyle=\ttfamily\scriptsize,
+    basicstyle=\ttfamily\tiny,
     breakatwhitespace=false,
     breaklines=true,
     captionpos=b,
     keepspaces=true,
-    numbers=left,
-    numbersep=5pt,
+    numbers=none,
     showspaces=false,
     showstringspaces=false,
     showtabs=false,
@@ -55,117 +54,61 @@
 \fancyhead[R]{\small Team 94}
 \fancyfoot[C]{\thepage}
 
-% Title spacing
-\titlespacing*{\section}{0pt}{1.5ex plus 0.5ex minus .2ex}{1ex plus .2ex}
-\titlespacing*{\subsection}{0pt}{1ex plus 0.3ex minus .2ex}{0.5ex plus .2ex}
+% Title spacing - more compact
+\titlespacing*{\section}{0pt}{1.2ex plus 0.3ex minus .2ex}{0.8ex plus .2ex}
+\titlespacing*{\subsection}{0pt}{0.8ex plus 0.2ex minus .2ex}{0.4ex plus .2ex}
 
 % Title
-\title{\vspace{-1cm}\textbf{PQC-DTLS 1.3 Implementation on RISC-V Bare-Metal Environment}\\[0.3cm]
+\title{\vspace{-1.2cm}\textbf{PQC-DTLS 1.3 Implementation on RISC-V Bare-Metal}\\[0.2cm]
 \large Inter IIT Tech Meet 14.0 -- Qtrino Labs Challenge}
-\author{
-\textbf{Team 94}
-}
+\author{\textbf{Team 94}}
 \date{}
 
 \begin{document}
 
 \maketitle
 \thispagestyle{fancy}
+\vspace{-0.5cm}
 
 %==============================================================================
 \section{Problem Understanding}
 %==============================================================================
 
-The challenge requires implementing a Post-Quantum Cryptography (PQC) enabled DTLS 1.3 client on a resource-constrained RISC-V bare-metal environment. The system must establish secure communication with a host-based DTLS server using quantum-resistant cryptographic algorithms, specifically ML-KEM (Kyber) for key encapsulation.
+The challenge requires implementing a Post-Quantum Cryptography (PQC) enabled DTLS 1.3 client on a resource-constrained RISC-V bare-metal environment, establishing secure communication with a host DTLS server using ML-KEM (Kyber) for quantum-resistant key exchange.
 
-\textbf{Key Objectives:}
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item Implement DTLS 1.3 client on LiteX-simulated VexRiscv SoC
-    \item Integrate ML-KEM-512 post-quantum key exchange
-    \item Use wolfSSL/wolfCrypt for cryptographic operations
-    \item Establish network communication via LiteETH
-    \item Optimize for embedded constraints (memory, compute)
-\end{itemize}
+\textbf{Key Objectives:} (1) DTLS 1.3 client on LiteX VexRiscv SoC, (2) ML-KEM-512 post-quantum key exchange, (3) wolfSSL/wolfCrypt integration, (4) LiteETH networking, (5) Embedded optimization.
 
 %==============================================================================
 \section{Architecture and Design}
 %==============================================================================
 
-\subsection{System Overview}
+The system comprises two components via TAP virtual network:
 
-The architecture consists of two components connected via a virtual TAP network interface:
+\textbf{Host (Linux):} PQC-DTLS 1.3 server with wolfSSL at \texttt{192.168.1.100:11111}, performing ML-KEM encapsulation and AES-GCM encryption.
 
-\textbf{Host Machine (Linux):} Runs the PQC-DTLS 1.3 server with wolfSSL, performing ML-KEM encapsulation, AES-GCM encryption, and SHA-256 key derivation over UDP sockets at \texttt{192.168.1.100:11111}.
+\textbf{LiteX Simulation:} Bare-metal DTLS client on VexRiscv (32-bit RV32IM, $\sim$100MHz) with LiteETH at \texttt{192.168.1.50:22222}.
 
-\textbf{LiteX Simulation:} Executes the bare-metal DTLS client on a VexRiscv RISC-V softcore (32-bit RV32IM, $\sim$100MHz) with LiteETH MAC at \texttt{192.168.1.50:22222}.
-
-\subsection{Software Stack}
-
-\begin{enumerate}[noitemsep,topsep=0pt]
-    \item \textbf{Application Layer:} PQC-DTLS 1.3 client (\texttt{main.c})
-    \item \textbf{TLS Layer:} wolfSSL with custom I/O callbacks
-    \item \textbf{Crypto Layer:} wolfCrypt (ML-KEM, AES-GCM, SHA-256)
-    \item \textbf{Network Layer:} LiteETH UDP API with ring buffer
-    \item \textbf{HAL:} LiteX CSR-based peripheral access
-\end{enumerate}
+\textbf{Software Stack:} Application (main.c) $\rightarrow$ wolfSSL with custom I/O $\rightarrow$ wolfCrypt (ML-KEM, AES-GCM, SHA-256) $\rightarrow$ LiteETH UDP $\rightarrow$ LiteX CSR HAL.
 
 %==============================================================================
-\section{PQC Algorithm Choices}
+\section{PQC Algorithm Selection}
 %==============================================================================
 
-\subsection{ML-KEM-512 (Kyber)}
+\textbf{ML-KEM-512} (formerly Kyber-512) selected as KEM for: NIST FIPS 203 standardization, memory efficiency (800B pubkey, 768B ciphertext), Level 1 security (128-bit classical), and native wolfSSL support.
 
-We selected \textbf{ML-KEM-512} (formerly Kyber-512) as the post-quantum Key Encapsulation Mechanism for the following reasons:
-
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item \textbf{NIST Standardization:} Selected as the primary KEM in FIPS 203
-    \item \textbf{Memory Efficiency:} Smallest variant with 800-byte public keys and 768-byte ciphertexts
-    \item \textbf{Security Level:} NIST Level 1 (128-bit classical security)
-    \item \textbf{wolfSSL Support:} Native implementation available
-\end{itemize}
-
-\textbf{Key Sizes:}
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item Public Key: 800 bytes
-    \item Secret Key: 1,632 bytes
-    \item Ciphertext: 768 bytes
-    \item Shared Secret: 32 bytes
-\end{itemize}
-
-\subsection{Symmetric Cryptography}
-
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item \textbf{AES-128-GCM:} Authenticated encryption for record protection
-    \item \textbf{SHA-256:} Key derivation and HKDF operations
-    \item \textbf{SHA3/SHAKE:} Required internally by ML-KEM
-\end{itemize}
+\textbf{Symmetric:} AES-128-GCM for authenticated encryption, SHA-256 for key derivation, SHA3/SHAKE for ML-KEM internals.
 
 %==============================================================================
-\section{Firmware Design}
+\section{Firmware Implementation}
 %==============================================================================
 
-\subsection{Initialization Sequence}
-
-\begin{lstlisting}[language=C,caption={Boot sequence}]
-1. IRQ setup and UART init
-2. LiteETH PHY initialization
-3. UDP stack startup with MAC/IP
-4. ARP resolution for server
-5. wolfSSL initialization
-6. DTLS 1.3 context creation
-7. Handshake execution
-\end{lstlisting}
+\subsection{Boot Sequence}
+IRQ/UART init $\rightarrow$ LiteETH PHY init $\rightarrow$ UDP stack with MAC/IP $\rightarrow$ ARP resolution $\rightarrow$ wolfSSL init $\rightarrow$ DTLS 1.3 context $\rightarrow$ Handshake.
 
 \subsection{Custom I/O Callbacks}
-
-wolfSSL's socket-based I/O is replaced with LiteETH-specific callbacks:
-
-\textbf{Send Callback:} Copies data to LiteETH TX buffer and triggers UDP transmission via \texttt{udp\_send()}.
-
-\textbf{Receive Callback:} Polls a ring buffer (8 entries) populated by the \texttt{udp\_rx\_callback} ISR, with configurable timeout.
+wolfSSL's socket I/O replaced with LiteETH callbacks: \textbf{Send} copies to TX buffer via \texttt{udp\_send()}; \textbf{Receive} polls ring buffer (8 slots) from \texttt{udp\_rx\_callback} ISR with timeout.
 
 \subsection{Memory Layout}
-
 \begin{table}[h]
 \centering
 \scriptsize
@@ -173,90 +116,58 @@ wolfSSL's socket-based I/O is replaced with LiteETH-specific callbacks:
 \toprule
 \textbf{Region} & \textbf{Address} & \textbf{Size} \\
 \midrule
-ROM & 0x00000000 & 128 KB \\
-SRAM & 0x10000000 & 8 KB \\
 Main RAM & 0x40000000 & 100 MB \\
-ETH MAC & 0x80000000 & 8 KB \\
-CSR & 0xF0000000 & 64 KB \\
-\midrule
 Stack & (top of RAM) & 500 KB \\
 Heap & (after BSS) & 500 KB \\
 \bottomrule
 \end{tabular}
-\caption{Memory regions from linker configuration}
 \end{table}
 
 %==============================================================================
-\section{wolfSSL/wolfCrypt Integration}
+\section{wolfSSL Configuration}
 %==============================================================================
 
-\subsection{Configuration (\texttt{user\_settings.h})}
-
-Key configuration macros for bare-metal PQC-DTLS operation:
-
-\begin{lstlisting}[language=C,caption={wolfSSL/wolfCrypt configuration}]
-/* DTLS 1.3 Support */
+Key \texttt{user\_settings.h} macros:
+\begin{lstlisting}[language=C]
+/* DTLS 1.3 + PQC */
 #define WOLFSSL_DTLS13
-#define WOLFSSL_TLS13
-#define WOLFSSL_DTLS_CH_FRAG
-#define WOLFSSL_SEND_HRR_COOKIE
-
-/* ML-KEM (Kyber) PQC */
 #define WOLFSSL_HAVE_MLKEM
 #define WOLFSSL_WC_MLKEM
-
-/* ECC and RSA */
-#define HAVE_ECC
-#define HAVE_CURVE25519
-#define HAVE_ED25519
-#define WC_RSA_PSS
-
-/* Crypto primitives */
+/* Crypto */
 #define HAVE_AESGCM
-#define WOLFSSL_SHA256
-#define WOLFSSL_SHA512
 #define WOLFSSL_SHA3
-
-/* Embedded optimizations */
+/* Embedded */
 #define WOLFSSL_SMALL_STACK
-#define WOLFSSL_SP_MATH
 #define NO_FILESYSTEM
 \end{lstlisting}
 
-\subsection{Enabled Features}
-
-The configuration enables: DTLS 1.3 with fragmentation, ML-KEM post-quantum KEM, ECC (Curve25519, Ed25519), RSA with PSS, AES-GCM, SHA-256/512, SHA3/SHAKE, and HKDF key derivation.
+Enabled: DTLS 1.3 with fragmentation, ML-KEM, ECC (Curve25519), AES-GCM, SHA-256/512, SHA3/SHAKE, HKDF.
 
 %==============================================================================
 \section{Challenges and Solutions}
 %==============================================================================
 
-\begin{enumerate}[noitemsep,topsep=0pt]
-    \item \textbf{Memory Constraints:} ML-KEM and DTLS require significant stack space. Solution: Allocated 500KB stack and 500KB heap, enabled \texttt{WOLFSSL\_SMALL\_STACK}.
-
-    \item \textbf{No OS/Socket Layer:} Standard BSD sockets unavailable. Solution: Implemented custom wolfSSL I/O callbacks wrapping LiteETH UDP API.
-
-    \item \textbf{Timing/RNG:} No hardware RNG or RTC. Solution: Implemented PRNG with \texttt{CUSTOM\_RAND\_GENERATE\_SEED} and timer-based \texttt{XTIME()}.
-
-    \item \textbf{Network Synchronization:} UDP packet loss during handshake. Solution: Ring buffer with 8-slot queue and timeout-based polling.
-
-    \item \textbf{Build Complexity:} Cross-compilation with wolfSSL. Solution: Custom Makefile integrating wolfCrypt sources with LiteX build system.
+\begin{enumerate}[noitemsep,topsep=0pt,leftmargin=*]
+    \item \textbf{Memory:} 500KB stack/heap, \texttt{WOLFSSL\_SMALL\_STACK}
+    \item \textbf{No Sockets:} Custom wolfSSL I/O wrapping LiteETH UDP
+    \item \textbf{No HW RNG:} PRNG with \texttt{CUSTOM\_RAND\_GENERATE\_SEED}
+    \item \textbf{Packet Loss:} 8-slot ring buffer with timeout polling
+    \item \textbf{Build:} Custom Makefile integrating wolfCrypt with LiteX
 \end{enumerate}
 
 %==============================================================================
-\section{Security Considerations}
+\section{Security Analysis}
 %==============================================================================
 
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item \textbf{Quantum Resistance:} ML-KEM provides protection against Shor's algorithm attacks on key exchange
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item \textbf{Quantum Resistance:} ML-KEM protects against Shor's algorithm
     \item \textbf{Forward Secrecy:} Ephemeral ML-KEM keys per session
-    \item \textbf{Authenticated Encryption:} AES-GCM provides confidentiality and integrity
-    \item \textbf{PRNG Limitation:} Current PRNG is deterministic (demo only); production requires hardware TRNG
-    \item \textbf{Certificate Verification:} Disabled for demo; production should enable with Dilithium signatures
+    \item \textbf{AEAD:} AES-GCM provides confidentiality + integrity
+    \item \textbf{Limitations:} Software PRNG (demo); production needs HW TRNG
 \end{itemize}
 
 %==============================================================================
-\section{Performance Metrics}
+\section{Performance}
 %==============================================================================
 
 \begin{table}[h]
@@ -266,135 +177,32 @@ The configuration enables: DTLS 1.3 with fragmentation, ML-KEM post-quantum KEM,
 \toprule
 \textbf{Metric} & \textbf{Value} \\
 \midrule
-\multicolumn{2}{@{}l@{}}{\textit{Memory Layout (from linker map)}} \\
-Firmware Size (.text) & 55,656 bytes (54 KB) \\
-Read-only Data (.rodata) & 4,272 bytes (4 KB) \\
-Initialized Data (.data) & 24 bytes \\
-BSS (.bss) & 400 bytes \\
-Total Binary (boot.bin) & 59,952 bytes (59 KB) \\
-\midrule
-\multicolumn{2}{@{}l@{}}{\textit{Stack/Heap Allocation}} \\
-Stack Size (allocated) & 500 KB \\
-Heap Size (allocated) & 500 KB \\
-\midrule
-\multicolumn{2}{@{}l@{}}{\textit{Crypto Operations (estimated)}} \\
-ML-KEM-512 KeyGen & $\sim$50 ms \\
-ML-KEM-512 Encaps & $\sim$30 ms \\
-ML-KEM-512 Decaps & $\sim$35 ms \\
+Firmware (.text) & 54 KB \\
+Total Binary & 59 KB \\
+ML-KEM KeyGen & $\sim$50 ms \\
+ML-KEM Encaps/Decaps & $\sim$30-35 ms \\
 \bottomrule
 \end{tabular}
-\caption{Memory and performance on VexRiscv @ 100MHz (simulated)}
 \end{table}
 
-%==============================================================================
-\section{Session Resumption}
-%==============================================================================
-
-wolfSSL's DTLS 1.3 implementation supports session resumption via PSK (Pre-Shared Key) mode. Our configuration enables:
-
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item Session ticket storage for abbreviated handshakes
-    \item 0-RTT data support (when enabled)
-    \item Reduced computational overhead on reconnection
-\end{itemize}
-
-Full session resumption requires server-side ticket issuance and client-side caching, which can be enabled via \texttt{HAVE\_SESSION\_TICKET}.
-
-%==============================================================================
-\section{Optimizations for Low-Power RISC-V}
-%==============================================================================
-
-\begin{enumerate}[noitemsep,topsep=0pt]
-    \item \textbf{Small Math Library:} \texttt{WOLFSSL\_SP\_SMALL} reduces code size with minor performance impact
-    \item \textbf{32-bit Word Size:} \texttt{SP\_WORD\_SIZE=32} matches RV32 architecture
-    \item \textbf{Small Tables:} \texttt{WOLFSSL\_AES\_SMALL\_TABLES} reduces AES lookup table size
-    \item \textbf{Memory-Optimized ML-KEM:} \texttt{MLKEM\_SMALL\_MEM} variants reduce peak memory
-    \item \textbf{No Dynamic Allocation in SP:} \texttt{WOLFSSL\_SP\_NO\_MALLOC} uses stack allocation
-\end{enumerate}
-
-%==============================================================================
-\section{Entropy Source}
-%==============================================================================
-
-The current implementation uses a Linear Congruential Generator (LCG) seeded with a constant (\texttt{0xDEADBEEF}) for demonstration purposes. The custom RNG function:
-
-\begin{lstlisting}[language=C]
-int CustomRngGenerateBlock(
-    unsigned char *output,
-    unsigned int sz) {
-    static unsigned int seed = 0xDEADBEEF;
-    for (unsigned int i = 0; i < sz; i++) {
-        seed = seed * 1103515245 + 12345;
-        output[i] = (unsigned char)(seed >> 16);
-    }
-    return 0;
-}
-\end{lstlisting}
-
-\textbf{Production Recommendation:} Integrate hardware TRNG (e.g., ring oscillator-based) or use LiteX's PRNG peripheral with proper entropy accumulation.
-
-%==============================================================================
-\section{Build System}
-%==============================================================================
-
-The firmware is built using a custom Makefile integrated with LiteX's build infrastructure:
-
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item \textbf{Toolchain:} RISC-V GCC cross-compiler (riscv64-unknown-elf-gcc)
-    \item \textbf{C Library:} picolibc with nano-malloc for embedded systems
-    \item \textbf{Linker:} Custom linker script with 500KB stack and 500KB heap
-    \item \textbf{Libraries:} libliteeth for Ethernet, libbase for UART/console
-    \item \textbf{Server:} Companion Linux DTLS server using system wolfSSL
-\end{itemize}
-
-\textbf{Key compiler flags:}
-\begin{lstlisting}[language=bash,basicstyle=\ttfamily\tiny]
--DWOLFSSL_USER_SETTINGS
--DWOLFSSL_SMALL_STACK
--DWOLFSSL_STATIC_MEMORY
-\end{lstlisting}
+\textbf{Optimizations:} \texttt{WOLFSSL\_SP\_SMALL} for code size, \texttt{SP\_WORD\_SIZE=32} for RV32, \texttt{WOLFSSL\_AES\_SMALL\_TABLES}, \texttt{WOLFSSL\_SP\_NO\_MALLOC}.
 
 %==============================================================================
 \section{Conclusion}
 %==============================================================================
 
-We implemented a full PQC-DTLS 1.3 client on a bare-metal RISC-V platform using LiteX simulation. The system establishes a secure channel with a Linux-based DTLS server using wolfSSL's DTLS 1.3 implementation with ML-KEM-512 post-quantum key exchange. Key achievements include:
+We implemented a complete PQC-DTLS 1.3 client on bare-metal RISC-V using LiteX simulation. The system establishes quantum-resistant secure channels with a Linux DTLS server using ML-KEM-512 key exchange. Achievements: full DTLS 1.3 handshake, custom LiteETH I/O, ring buffer packet handling, and compact 59KB firmware.
 
-\begin{itemize}[noitemsep,topsep=0pt]
-    \item Complete DTLS 1.3 handshake with ML-KEM key exchange
-    \item Custom LiteETH I/O callbacks for UDP networking
-    \item Ring buffer-based packet handling with timeout support
-    \item Companion Linux server (\texttt{pqc\_dtls\_server.c})
-    \item Compact firmware footprint ($\sim$59 KB binary)
-\end{itemize}
+\vspace{0.2cm}
+\noindent\textbf{Repository:} \url{https://github.com/SreejitaChatterjee/Team94_L1}
 
-\vspace{0.3cm}
-\noindent\textbf{Repository:} \url{https://github.com/Team94/LP_Constraint_Env_Sim}
-
-%==============================================================================
-% Bibliography
 %==============================================================================
 \begin{thebibliography}{9}
 \scriptsize
-
-\bibitem{fips203}
-NIST, ``FIPS 203: Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM),'' 2024.
-
-\bibitem{wolfssl}
-wolfSSL Inc., ``wolfSSL Embedded SSL/TLS Library,'' \url{https://www.wolfssl.com/}
-
-\bibitem{litex}
-Enjoy-Digital, ``LiteX: A Migen/MiSoC based SoC builder,'' \url{https://github.com/enjoy-digital/litex}
-
-\bibitem{vexriscv}
-SpinalHDL, ``VexRiscv: A FPGA friendly 32-bit RISC-V CPU,'' \url{https://github.com/SpinalHDL/VexRiscv}
-
-\bibitem{dtls13}
-E. Rescorla, H. Tschofenig, N. Modadugu, ``The Datagram Transport Layer Security (DTLS) Protocol Version 1.3,'' RFC 9147, 2022.
-
-\bibitem{kyber}
-R. Avanzi et al., ``CRYSTALS-Kyber: Algorithm Specifications and Supporting Documentation,'' NIST PQC Round 3 Submission, 2021.
-
+\bibitem{fips203} NIST, ``FIPS 203: ML-KEM Standard,'' 2024.
+\bibitem{wolfssl} wolfSSL Inc., ``wolfSSL Embedded SSL/TLS,'' \url{https://www.wolfssl.com/}
+\bibitem{litex} Enjoy-Digital, ``LiteX SoC Builder,'' \url{https://github.com/enjoy-digital/litex}
+\bibitem{dtls13} E. Rescorla et al., ``DTLS 1.3,'' RFC 9147, 2022.
 \end{thebibliography}
 
 %==============================================================================
@@ -417,76 +225,55 @@ Team94_L1/
 |   |-- boot/                       # RISC-V client firmware
 |   |   |-- main.c                  # PQC-DTLS 1.3 client
 |   |   |-- Makefile                # Build configuration
-|   |   |-- linker.ld               # Memory layout
-|   |   |-- boot.bin                # Compiled binary (output)
-|   |   |-- src/                    # wolfSSL TLS source
+|   |   |-- server/                 # Linux DTLS server
+|   |   |   `-- pqc_dtls_server.c
 |   |   |-- wolfssl/                # wolfSSL headers
-|   |   |   `-- wolfcrypt/
-|   |   |       `-- user_settings.h # wolfSSL configuration
 |   |   `-- wolfcrypt/src/          # wolfCrypt source files
 |   |-- build/                      # LiteX build output
 |   |-- report/                     # Technical report
-|   |-- litex/, liteeth/, migen/    # LiteX framework
-|   `-- README.md
+|   `-- litex/, liteeth/, migen/    # LiteX framework
 |
-|-- boot/                           # Root-level boot directory
-|   |-- main.c                      # Client firmware (copy)
-|   `-- server/                     # Linux DTLS server
-|       |-- pqc_dtls_server.c       # DTLS 1.3 server
-|       |-- Makefile
-|       `-- user_settings.h
-|
-`-- PQC_DTLS_README.md              # Protocol documentation
+`-- README.md                       # Project documentation
 \end{lstlisting}
 
 %------------------------------------------------------------------------------
 \subsection*{Annexure B: Build Instructions}
 %------------------------------------------------------------------------------
 
-\textbf{Prerequisites:}
-\begin{itemize}[noitemsep]
-    \item RISC-V GCC toolchain (riscv64-unknown-elf-gcc)
-    \item LiteX framework with VexRiscv support
-    \item wolfSSL library (v5.6.0 or later with PQC support)
-    \item Python 3.8+ with Migen/LiteX dependencies
-\end{itemize}
-
-\textbf{Building the Firmware:}
 \begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
-# Navigate to boot directory
-cd LP_Constraint_Env_Sim/boot
+# Build firmware
+cd LP_Constraint_Env_Sim/boot && make clean && make
 
-# Build the firmware
-make clean && make
+# Build server
+cd boot/server && make dtls13
 
-# Output: boot.bin (load into LiteX simulation)
-\end{lstlisting}
-
-\textbf{Building the Server:}
-\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
-# Navigate to server directory (root level)
-cd Team94_L1/boot/server
-
-# Build with wolfSSL
-make
-
-# Run the server
-./build/pqc_dtls_server
-\end{lstlisting}
-
-\textbf{Running the Simulation:}
-\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
-# Create TAP interface
-sudo ip tuntap add tap0 mode tap
+# Setup TAP interface
+sudo ip tuntap add tap0 mode tap user $USER
 sudo ip addr add 192.168.1.100/24 dev tap0
 sudo ip link set tap0 up
 
-# Run LiteX simulation
-litex_sim --with-ethernet --ethernet-tap tap0
+# Run simulation
+litex_sim --with-ethernet --ethernet-tap tap0 --ram-init=boot/boot.bin
 \end{lstlisting}
 
 %------------------------------------------------------------------------------
-\subsection*{Annexure C: Network Configuration}
+\subsection*{Annexure C: DTLS 1.3 Handshake Flow}
+%------------------------------------------------------------------------------
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+Client (LiteX)                         Server (Linux)
+     |                                      |
+     |-------- ClientHello + ML-KEM ------->|
+     |<------- ServerHello + ML-KEM --------|
+     |<------- EncryptedExtensions ---------|
+     |<------- Finished --------------------|
+     |-------- Finished ------------------->|
+     |<======= Application Data ==========>|
+     |        (AES-128-GCM encrypted)       |
+\end{lstlisting}
+
+%------------------------------------------------------------------------------
+\subsection*{Annexure D: Network Configuration}
 %------------------------------------------------------------------------------
 
 \begin{table}[h]
@@ -497,61 +284,25 @@ litex_sim --with-ethernet --ethernet-tap tap0
 \midrule
 IP Address & 192.168.1.50 & 192.168.1.100 \\
 UDP Port & 22222 & 11111 \\
-MAC Address & 0x10:0xe2:d5:00:00:02 & (host default) \\
 Interface & LiteETH & tap0 \\
 \bottomrule
 \end{tabular}
-\caption{Network configuration for DTLS communication}
 \end{table}
 
 %------------------------------------------------------------------------------
-\subsection*{Annexure D: wolfSSL Configuration Summary}
+\subsection*{Annexure E: Entropy Source (Demo)}
 %------------------------------------------------------------------------------
 
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{@{}ll@{}}
-\toprule
-\textbf{Feature} & \textbf{Configuration Macro} \\
-\midrule
-DTLS 1.3 & \texttt{WOLFSSL\_DTLS13}, \texttt{WOLFSSL\_TLS13} \\
-ML-KEM (Kyber) & \texttt{WOLFSSL\_HAVE\_MLKEM}, \texttt{WOLFSSL\_WC\_MLKEM} \\
-AES-GCM & \texttt{HAVE\_AESGCM} \\
-SHA-256/512 & \texttt{WOLFSSL\_SHA256}, \texttt{WOLFSSL\_SHA512} \\
-SHA3/SHAKE & \texttt{WOLFSSL\_SHA3} \\
-ECC Support & \texttt{HAVE\_ECC}, \texttt{HAVE\_CURVE25519} \\
-Small Stack & \texttt{WOLFSSL\_SMALL\_STACK} \\
-No Filesystem & \texttt{NO\_FILESYSTEM} \\
-Custom RNG & \texttt{CUSTOM\_RAND\_GENERATE\_SEED} \\
-\bottomrule
-\end{tabular}
-\caption{Key wolfSSL/wolfCrypt configuration macros}
-\end{table}
-
-%------------------------------------------------------------------------------
-\subsection*{Annexure E: DTLS 1.3 Handshake Flow}
-%------------------------------------------------------------------------------
-
-\begin{lstlisting}[basicstyle=\ttfamily\small]
-Client (LiteX)                         Server (Linux)
-     |                                      |
-     |-------- ClientHello + ML-KEM ------->|
-     |                                      |
-     |<------- HelloRetryRequest -----------|
-     |                                      |
-     |-------- ClientHello (retry) -------->|
-     |                                      |
-     |<------- ServerHello + ML-KEM --------|
-     |<------- EncryptedExtensions ---------|
-     |<------- Certificate -----------------|
-     |<------- CertificateVerify -----------|
-     |<------- Finished --------------------|
-     |                                      |
-     |-------- Finished ------------------->|
-     |                                      |
-     |<======= Application Data ==========>|
-     |        (AES-128-GCM encrypted)       |
+\begin{lstlisting}[language=C,basicstyle=\ttfamily\small]
+int CustomRngGenerateBlock(unsigned char *output, unsigned int sz) {
+    static unsigned int seed = 0xDEADBEEF;
+    for (unsigned int i = 0; i < sz; i++) {
+        seed = seed * 1103515245 + 12345;
+        output[i] = (unsigned char)(seed >> 16);
+    }
+    return 0;
+}
+// Production: Use hardware TRNG (ring oscillator-based)
 \end{lstlisting}
 
 \end{document}
