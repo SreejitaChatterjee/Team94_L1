@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.10.17)  5 DEC 2025 22:59
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (MiKTeX 24.1) (preloaded format=pdflatex 2025.10.17)  5 DEC 2025 23:04
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -622,10 +622,10 @@ Package rerunfilecheck Info: File `Team94_Report.out' has not changed.
 (rerunfilecheck)             Checksum: C26D24360F55CB1DDBA0F74CD16AED79;2944.
  ) 
 Here is how much of TeX's memory you used:
- 13660 strings out of 474486
- 208232 string characters out of 5743754
- 2422542 words of memory out of 5000000
- 35604 multiletter control sequences out of 15000+600000
+ 13657 strings out of 474486
+ 208199 string characters out of 5743754
+ 2430542 words of memory out of 5000000
+ 35600 multiletter control sequences out of 15000+600000
  598546 words of font info for 83 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,13n,79p,450b,2067s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -640,9 +640,9 @@ ype1/public/amsfonts/cm/cmr10.pfb><C:/Users/sreej/AppData/Local/Programs/MiKTeX
 /Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy7.pfb><C:/Users/sreej/AppDa
 ta/Local/Programs/MiKTeX/fonts/type1/urw/helvetic/uhvb8a.pfb><C:/Users/sreej/Ap
 pData/Local/Programs/MiKTeX/fonts/type1/urw/helvetic/uhvr8a.pfb>
-Output written on Team94_Report.pdf (5 pages, 183222 bytes).
+Output written on Team94_Report.pdf (5 pages, 183406 bytes).
 PDF statistics:
- 582 PDF objects out of 1000 (max. 8388607)
- 160 named destinations out of 1000 (max. 500000)
+ 583 PDF objects out of 1000 (max. 8388607)
+ 161 named destinations out of 1000 (max. 500000)
  161 words of extra memory for PDF output out of 10000 (max. 10000000)
 

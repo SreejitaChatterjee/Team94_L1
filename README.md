@@ -93,29 +93,10 @@ Team94_L1/
 |   |   +-- main.c                   # PQC-DTLS 1.3 client implementation
 |   |   +-- Makefile                 # LiteX build system integration
 |   |   +-- linker.ld                # Memory layout for RISC-V SoC
-|   |   +-- crt0.o                   # C runtime startup object
 |   |   +-- boot.bin                 # Compiled binary (output)
 |   |   +-- boot.elf                 # ELF executable (output)
-|   |   |
-|   |   +-- server/                  # Linux DTLS server
-|   |   |   +-- pqc_dtls_server.c    # DTLS 1.3 server (uses system wolfSSL)
-|   |   |   +-- pqc_server.c         # Legacy custom protocol server
-|   |   |   +-- Makefile             # Server build system
-|   |   |   +-- user_settings.h      # wolfSSL/wolfCrypt configuration
-|   |   |
 |   |   +-- wolfssl/                 # wolfSSL headers
-|   |   |   +-- wolfcrypt/           # wolfCrypt crypto headers
-|   |   |       +-- wc_mlkem.h       # ML-KEM API
-|   |   |       +-- aes.h            # AES API
-|   |   |       +-- sha256.h         # SHA-256 API
-|   |   |
-|   |   +-- wolfcrypt/               # wolfCrypt source files
-|   |       +-- src/
-|   |           +-- wc_mlkem.c       # ML-KEM implementation
-|   |           +-- aes.c            # AES implementation
-|   |           +-- sha256.c         # SHA-256 implementation
-|   |           +-- sha3.c           # SHA-3/SHAKE (for ML-KEM)
-|   |           +-- ... (104 source files)
+|   |   +-- wolfcrypt/src/           # wolfCrypt source (104 files)
 |   |
 |   +-- build/                       # LiteX build output
 |   |   +-- sim/software/
@@ -131,9 +112,13 @@ Team94_L1/
 |   +-- migen/                       # Migen HDL library
 |   +-- pythondata-cpu-vexriscv/     # VexRiscv CPU core
 |
-+-- boot/                            # Alternate boot directory (root level)
-|   +-- main.c                       # Client firmware (copy)
-|   +-- server/                      # Server implementation
++-- boot/                            # Root-level boot directory
+|   +-- main.c                       # Client firmware
+|   +-- server/                      # Linux DTLS server
+|       +-- pqc_dtls_server.c        # DTLS 1.3 server
+|       +-- pqc_server.c             # Legacy protocol server
+|       +-- Makefile                 # Server build system
+|       +-- user_settings.h          # wolfSSL configuration
 |
 +-- README.md                        # This file
 +-- requirements.txt                 # Python dependencies
@@ -294,7 +279,7 @@ make
 ### Build the Server
 
 ```bash
-cd LP_Constraint_Env_Sim/boot/server
+cd boot/server
 
 # Build DTLS 1.3 server
 make dtls13
@@ -358,7 +343,7 @@ ip addr show tap0
 ### Terminal 1: Start the DTLS Server
 
 ```bash
-cd LP_Constraint_Env_Sim/boot/server
+cd boot/server
 make run13
 ```
 

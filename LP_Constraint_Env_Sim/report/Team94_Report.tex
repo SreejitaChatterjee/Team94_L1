@@ -383,16 +383,17 @@ Team94_L1/
 |   |   |-- main.c                  # PQC-DTLS 1.3 client
 |   |   |-- Makefile                # Build configuration
 |   |   |-- linker.ld               # Memory layout
-|   |   |-- server/                 # Linux DTLS server
-|   |   |   |-- pqc_dtls_server.c   # DTLS 1.3 server
-|   |   |   `-- Makefile
 |   |   |-- wolfssl/                # wolfSSL headers
-|   |   |   `-- wolfcrypt/
-|   |   |       `-- user_settings.h # Configuration
 |   |   `-- wolfcrypt/src/          # wolfCrypt source (104 files)
 |   |-- build/                      # LiteX build output
 |   |-- report/                     # Technical report
 |   `-- litex/, liteeth/, migen/    # LiteX framework
+|
+|-- boot/                           # Root-level boot (with server)
+|   |-- main.c                      # Client firmware
+|   `-- server/                     # Linux DTLS server
+|       |-- pqc_dtls_server.c       # DTLS 1.3 server
+|       `-- Makefile
 |
 `-- README.md                       # Project documentation
 \end{lstlisting}
@@ -409,7 +410,7 @@ cd LP_Constraint_Env_Sim/boot
 make clean && make
 # Output: boot.bin, boot.elf
 
-# Build server
+# Build server (from repo root)
 cd boot/server
 make dtls13
 # Output: build/pqc_dtls_server
