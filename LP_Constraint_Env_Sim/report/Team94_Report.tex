@@ -313,6 +313,29 @@ The firmware uses a custom Makefile integrated with LiteX:
 \end{itemize}
 
 %==============================================================================
+\section{Protocol Flow}
+%==============================================================================
+
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+Client (RISC-V)                    Server (Linux)
+     |                                  |
+     |--- ClientHello + ML-KEM -------->|
+     |<-- ServerHello + ML-KEM ---------|
+     |<-- EncryptedExtensions ----------|
+     |<-- Finished ---------------------|
+     |--- Finished -------------------->|
+     |                                  |
+     |<=== Application Data (AES-GCM) =>|
+\end{lstlisting}
+
+\textbf{Key Derivation:} After ML-KEM key exchange produces a 32-byte shared secret, AES session keys are derived using SHA-256:
+\begin{lstlisting}[language=C,basicstyle=\ttfamily\scriptsize]
+hash = SHA256(shared_secret || "client_key")
+aes_key = hash[0:15]   // 16 bytes
+aes_iv  = hash[16:27]  // 12 bytes
+\end{lstlisting}
+
+%==============================================================================
 \section{Conclusion}
 %==============================================================================
 
