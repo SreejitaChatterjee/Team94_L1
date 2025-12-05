@@ -1,11 +1,7 @@
 /**
- * PQC-DTLS Client for Bare-Metal RISC-V
- * Inter IIT Tech Meet 14.0 - QTrino Labs Challenge
- *
- * Client implementation with:
- * - ML-KEM-512 (Kyber) key exchange
- * - AES-128-GCM authenticated encryption
- * - UART-based communication with host server
+ * PQC-DTLS 1.3 Client for Bare-Metal RISC-V with LiteETH
+ * Uses wolfSSL's full DTLS 1.3 implementation with ML-KEM
+ * Custom I/O callbacks for LiteETH UDP
  */
 
 #include <stdio.h>
@@ -18,32 +14,35 @@
 #include <libbase/console.h>
 #include <generated/csr.h>
 
-#include <wolfssl/wolfcrypt/user_settings.h>
-#include <wolfssl/options.h>
-#include <wolfssl/wolfcrypt/wc_mlkem.h>
-#include <wolfssl/wolfcrypt/random.h>
-#include <wolfssl/wolfcrypt/sha256.h>
-#include <wolfssl/wolfcrypt/sha3.h>
-#include <wolfssl/wolfcrypt/aes.h>
+/* LiteETH includes */
+#include <libliteeth/udp.h>
+#include <libliteeth/mdio.h>
 
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
+/* wolfSSL includes */
+#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/ssl.h>
+#include <wolfssl/wolfcrypt/random.h>
 
 /*============================================================================
- * Protocol Message Types
+ * Network Configuration
  *============================================================================*/
-#define MSG_CLIENT_HELLO     0x01
-#define MSG_SERVER_HELLO     0x02
-#define MSG_KEY_EXCHANGE     0x03
-#define MSG_ENCRYPTED_DATA   0x04
-#define MSG_FINISHED         0x05
+#define CLIENT_IP_1     192
+#define CLIENT_IP_2     168
+#define CLIENT_IP_3     1
+#define CLIENT_IP_4     50
 
-#define MAX_PACKET_SIZE      2048
-#define UART_TIMEOUT_MS      30000
+#define SERVER_IP_1     192
+#define SERVER_IP_2     168
+#define SERVER_IP_3     1
+#define SERVER_IP_4     100
+
+#define CLIENT_PORT     22222
+#define SERVER_PORT     11111
+
+static const uint8_t client_mac[6] = {0x10, 0xe2, 0xd5, 0x00, 0x00, 0x01};
+
+#define MAX_PACKET_SIZE      4096
+#define DTLS_TIMEOUT_SEC     5
 
 /*============================================================================
  * Platform Stubs
@@ -58,14 +57,7 @@ int CustomRngGenerateBlock(unsigned char *output, unsigned int sz) {
     return 0;
 }
 
-#include <sys/time.h>
 static uint32_t tick_count = 0;
-
-int gettimeofday(struct timeval* tv, void* tz) {
-    (void)tz;
-    if (tv) { tv->tv_sec = tick_count / 1000; tv->tv_usec = (tick_count % 1000) * 1000; }
-    return 0;
-}
 
 time_t XTIME(time_t *t) {
     time_t now = tick_count / 1000;
@@ -73,295 +65,361 @@ time_t XTIME(time_t *t) {
     return now;
 }
 
-static uint32_t get_ticks(void) {
+static uint32_t get_ticks_ms(void) {
+#ifdef CSR_TIMER0_BASE
+    timer0_update_value_write(1);
+    uint32_t val = timer0_value_read();
+    return val / (CONFIG_CLOCK_FREQUENCY / 1000);
+#else
     return tick_count++;
+#endif
 }
 
 /*============================================================================
  * Global State
  *============================================================================*/
-static WC_RNG rng;
-static uint8_t shared_secret[32];
-static uint8_t client_key[16];
-static uint8_t client_iv[12];
-static int handshake_complete = 0;
+static uint32_t server_ip;
+static uint32_t client_ip_addr;
+
+/* RX Ring Buffer for incoming packets */
+#define RX_RING_SIZE 8
+static struct {
+    uint8_t data[MAX_PACKET_SIZE];
+    uint32_t len;
+    int valid;
+} rx_ring[RX_RING_SIZE];
+static volatile int rx_ring_head = 0;
+static volatile int rx_ring_tail = 0;
 
 /*============================================================================
- * UART Packet I/O (Length-prefixed protocol)
+ * LiteETH UDP Receive Callback
  *============================================================================*/
+static void udp_rx_callback(uint32_t src_ip, uint16_t src_port,
+                            uint16_t dst_port, void *data, uint32_t length)
+{
+    (void)src_port;
+    (void)dst_port;
 
-static int uart_send_packet(uint8_t msg_type, const uint8_t *data, uint16_t len) {
-    /* Header: [msg_type:1][length:2] */
-    uart_write(msg_type);
-    uart_write((len >> 8) & 0xFF);
-    uart_write(len & 0xFF);
+    printf("[LiteETH RX] src=%08lx len=%lu\n", (unsigned long)src_ip, (unsigned long)length);
 
-    /* Payload */
-    for (uint16_t i = 0; i < len; i++) {
-        uart_write(data[i]);
-    }
-
-    printf("[TX] Type=%02x Len=%d\n", msg_type, len);
-    return 0;
-}
-
-static int uart_recv_packet(uint8_t *msg_type, uint8_t *data, uint16_t max_len) {
-    uint32_t timeout = get_ticks() + UART_TIMEOUT_MS;
-
-    /* Read header */
-    while (!uart_read_nonblock()) {
-        if (get_ticks() > timeout) {
-            printf("[RX] Timeout waiting for header\n");
-            return -1;
+    /* Accept packets from server */
+    if (src_ip == server_ip && length <= MAX_PACKET_SIZE) {
+        int next_head = (rx_ring_head + 1) % RX_RING_SIZE;
+        if (next_head != rx_ring_tail) {  /* Not full */
+            memcpy(rx_ring[rx_ring_head].data, data, length);
+            rx_ring[rx_ring_head].len = length;
+            rx_ring[rx_ring_head].valid = 1;
+            rx_ring_head = next_head;
+            printf("[LiteETH RX] Packet queued, head=%d\n", rx_ring_head);
+        } else {
+            printf("[LiteETH RX] Ring buffer full, dropping packet\n");
         }
     }
-    *msg_type = uart_read();
+}
 
-    /* Read length (2 bytes, big-endian) */
-    uint8_t len_hi = 0, len_lo = 0;
-    while (!uart_read_nonblock()) {
-        if (get_ticks() > timeout) return -1;
+/*============================================================================
+ * wolfSSL Custom I/O Callbacks
+ *============================================================================*/
+
+/* Context passed to wolfSSL I/O callbacks */
+typedef struct {
+    uint32_t server_ip;
+    uint16_t server_port;
+    uint16_t client_port;
+    uint32_t timeout_ms;
+} dtls_io_ctx_t;
+
+static dtls_io_ctx_t io_ctx;
+
+/**
+ * wolfSSL Send Callback - sends data via LiteETH
+ */
+static int dtls_send_cb(WOLFSSL* ssl, char* buf, int sz, void* ctx)
+{
+    dtls_io_ctx_t* io = (dtls_io_ctx_t*)ctx;
+    (void)ssl;
+
+    printf("[DTLS TX] Sending %d bytes\n", sz);
+
+    /* Get TX buffer and copy data */
+    uint8_t* txbuf = (uint8_t*)udp_get_tx_buffer();
+    memcpy(txbuf, buf, sz);
+
+    /* Send via LiteETH */
+    int ret = udp_send(io->client_port, io->server_port, sz);
+
+    if (ret) {
+        printf("[DTLS TX] Success\n");
+        return sz;
+    } else {
+        printf("[DTLS TX] Failed\n");
+        return WOLFSSL_CBIO_ERR_GENERAL;
     }
-    len_hi = uart_read();
+}
 
-    while (!uart_read_nonblock()) {
-        if (get_ticks() > timeout) return -1;
-    }
-    len_lo = uart_read();
+/**
+ * wolfSSL Receive Callback - receives data from LiteETH ring buffer
+ */
+static int dtls_recv_cb(WOLFSSL* ssl, char* buf, int sz, void* ctx)
+{
+    dtls_io_ctx_t* io = (dtls_io_ctx_t*)ctx;
+    (void)ssl;
 
-    uint16_t len = (len_hi << 8) | len_lo;
-    if (len > max_len) {
-        printf("[RX] Packet too large: %d > %d\n", len, max_len);
-        return -2;
-    }
+    uint32_t start = get_ticks_ms();
+    uint32_t timeout = start + io->timeout_ms;
 
-    /* Read payload */
-    for (uint16_t i = 0; i < len; i++) {
-        while (!uart_read_nonblock()) {
-            if (get_ticks() > timeout) return -1;
+    printf("[DTLS RX] Waiting for data (max %d bytes, timeout %lu ms)\n",
+           sz, (unsigned long)io->timeout_ms);
+
+    /* Poll until we get data or timeout */
+    while (get_ticks_ms() < timeout) {
+        /* Service LiteETH */
+        udp_service();
+
+        /* Check if we have data in the ring buffer */
+        if (rx_ring_tail != rx_ring_head && rx_ring[rx_ring_tail].valid) {
+            uint32_t pkt_len = rx_ring[rx_ring_tail].len;
+            int copy_len = (pkt_len <= (uint32_t)sz) ? pkt_len : sz;
+
+            printf("[DTLS RX] Got packet: %lu bytes, copying %d\n",
+                   (unsigned long)pkt_len, copy_len);
+
+            memcpy(buf, rx_ring[rx_ring_tail].data, copy_len);
+            rx_ring[rx_ring_tail].valid = 0;
+            rx_ring_tail = (rx_ring_tail + 1) % RX_RING_SIZE;
+
+            return copy_len;
         }
-        data[i] = uart_read();
     }
 
-    printf("[RX] Type=%02x Len=%d\n", *msg_type, len);
-    return len;
+    printf("[DTLS RX] Timeout\n");
+    return WOLFSSL_CBIO_ERR_TIMEOUT;
+}
+
+/**
+ * wolfSSL DTLS Generate Cookie Callback
+ */
+static int dtls_gen_cookie_cb(WOLFSSL* ssl, unsigned char* buf, int sz, void* ctx)
+{
+    (void)ssl;
+    (void)ctx;
+
+    /* Generate a simple cookie */
+    WC_RNG rng;
+    wc_InitRng(&rng);
+    wc_RNG_GenerateBlock(&rng, buf, sz);
+    wc_FreeRng(&rng);
+
+    return sz;
 }
 
 /*============================================================================
- * Utility Functions
+ * Network Initialization
  *============================================================================*/
+static int pqc_eth_init(void)
+{
+    printf("[NET] Initializing LiteETH...\n");
 
-static void print_hex(const char *label, const uint8_t *data, int len) {
-    printf("%s: ", label);
-    for (int i = 0; i < (len > 16 ? 16 : len); i++)
-        printf("%02x", data[i]);
-    if (len > 16) printf("...");
-    printf(" (%d bytes)\n", len);
-}
+    /* Initialize ethernet PHY */
+    eth_init();
 
-static void derive_keys(const uint8_t *ss) {
-    /* Derive encryption key and IV from shared secret using SHA256 */
-    wc_Sha256 sha;
-    uint8_t hash[32];
+    /* Set up IP addresses */
+    client_ip_addr = IPTOINT(CLIENT_IP_1, CLIENT_IP_2, CLIENT_IP_3, CLIENT_IP_4);
+    server_ip = IPTOINT(SERVER_IP_1, SERVER_IP_2, SERVER_IP_3, SERVER_IP_4);
 
-    wc_InitSha256(&sha);
-    wc_Sha256Update(&sha, ss, 32);
-    wc_Sha256Update(&sha, (uint8_t*)"client_key", 10);
-    wc_Sha256Final(&sha, hash);
+    printf("[NET] client_ip = 0x%08lx\n", (unsigned long)client_ip_addr);
+    printf("[NET] server_ip = 0x%08lx\n", (unsigned long)server_ip);
 
-    memcpy(client_key, hash, 16);
-    memcpy(client_iv, hash + 16, 12);
+    /* Initialize UDP stack */
+    udp_start(client_mac, client_ip_addr);
 
-    print_hex("Derived Key", client_key, 16);
-    print_hex("Derived IV", client_iv, 12);
-}
+    /* Register callback */
+    udp_set_callback(udp_rx_callback);
 
-/*============================================================================
- * PQC-DTLS Client Protocol
- *============================================================================*/
+    printf("[NET] Client: %d.%d.%d.%d:%d\n",
+           CLIENT_IP_1, CLIENT_IP_2, CLIENT_IP_3, CLIENT_IP_4, CLIENT_PORT);
+    printf("[NET] Server: %d.%d.%d.%d:%d\n",
+           SERVER_IP_1, SERVER_IP_2, SERVER_IP_3, SERVER_IP_4, SERVER_PORT);
 
-static int client_send_hello(void) {
-    printf("\n[Client] Sending ClientHello...\n");
+    /* ARP resolution */
+    printf("[NET] Resolving server MAC via ARP...\n");
+    if (!udp_arp_resolve(server_ip)) {
+        printf("[NET] ARP resolution failed\n");
+        return -1;
+    }
+    printf("[NET] ARP resolution successful\n");
 
-    /* ClientHello contains: random[32] */
-    uint8_t client_random[32];
-    wc_RNG_GenerateBlock(&rng, client_random, sizeof(client_random));
-
-    uart_send_packet(MSG_CLIENT_HELLO, client_random, sizeof(client_random));
-    print_hex("ClientRandom", client_random, 32);
+    /* Initialize I/O context */
+    io_ctx.server_ip = server_ip;
+    io_ctx.server_port = SERVER_PORT;
+    io_ctx.client_port = CLIENT_PORT;
+    io_ctx.timeout_ms = DTLS_TIMEOUT_SEC * 1000;
 
     return 0;
 }
 
-static int client_key_exchange(void) {
+/*============================================================================
+ * DTLS 1.3 Client with PQC
+ *============================================================================*/
+static int dtls13_pqc_client(void)
+{
+    WOLFSSL_CTX* ctx = NULL;
+    WOLFSSL* ssl = NULL;
     int ret;
-    uint8_t buffer[MAX_PACKET_SIZE];
-    uint8_t msg_type;
-
-    printf("\n[Client] Generating ML-KEM key pair...\n");
-
-    /* Generate ML-KEM key pair */
-    MlKemKey *key = wc_MlKemKey_New(WC_ML_KEM_512, NULL, INVALID_DEVID);
-    if (!key) {
-        printf("ERROR: Key allocation failed\n");
-        return -1;
-    }
-
-    ret = wc_MlKemKey_MakeKey(key, &rng);
-    if (ret != 0) {
-        printf("ERROR: KeyGen failed: %d\n", ret);
-        wc_MlKemKey_Free(key);
-        return ret;
-    }
-    printf("[Client] ML-KEM KeyGen OK\n");
-
-    /* Export and send public key */
-    uint8_t pub_key[WC_ML_KEM_512_PUBLIC_KEY_SIZE];
-    wc_MlKemKey_EncodePublicKey(key, pub_key, sizeof(pub_key));
-    print_hex("Client PubKey", pub_key, sizeof(pub_key));
-
-    uart_send_packet(MSG_KEY_EXCHANGE, pub_key, sizeof(pub_key));
-    printf("[Client] Sent public key to server\n");
-
-    /* Wait for server's ciphertext (encapsulated secret) */
-    printf("[Client] Waiting for server response...\n");
-    int len = uart_recv_packet(&msg_type, buffer, sizeof(buffer));
-    if (len < 0 || msg_type != MSG_KEY_EXCHANGE) {
-        printf("ERROR: Expected KEY_EXCHANGE, got %02x\n", msg_type);
-        wc_MlKemKey_Free(key);
-        return -1;
-    }
-
-    if (len != WC_ML_KEM_512_CIPHER_TEXT_SIZE) {
-        printf("ERROR: Invalid ciphertext size: %d\n", len);
-        wc_MlKemKey_Free(key);
-        return -1;
-    }
-
-    print_hex("Server CT", buffer, len);
-
-    /* Decapsulate to get shared secret */
-    printf("[Client] Decapsulating shared secret...\n");
-    ret = wc_MlKemKey_Decapsulate(key, shared_secret, buffer, len);
-    wc_MlKemKey_Free(key);
-
-    if (ret != 0) {
-        printf("ERROR: Decapsulation failed: %d\n", ret);
-        return ret;
-    }
-
-    print_hex("Shared Secret", shared_secret, sizeof(shared_secret));
-
-    /* Derive traffic keys */
-    derive_keys(shared_secret);
-
-    return 0;
-}
-
-static int client_send_finished(void) {
-    printf("\n[Client] Sending Finished message...\n");
-
-    /* Finished contains: encrypted "FINISHED" + HMAC */
-    const char *finished_msg = "CLIENT_FINISHED";
-    uint8_t ciphertext[64];
-    uint8_t tag[16];
-
-    Aes aes;
-    wc_AesGcmSetKey(&aes, client_key, sizeof(client_key));
-
-    int ret = wc_AesGcmEncrypt(&aes, ciphertext, (uint8_t*)finished_msg,
-                                strlen(finished_msg), client_iv, sizeof(client_iv),
-                                tag, sizeof(tag), NULL, 0);
-    if (ret != 0) {
-        printf("ERROR: Encrypt failed\n");
-        return ret;
-    }
-
-    /* Send: [ciphertext][tag] */
-    uint8_t packet[80];
-    memcpy(packet, ciphertext, strlen(finished_msg));
-    memcpy(packet + strlen(finished_msg), tag, 16);
-
-    uart_send_packet(MSG_FINISHED, packet, strlen(finished_msg) + 16);
-
-    return 0;
-}
-
-static int client_wait_server_finished(void) {
-    printf("\n[Client] Waiting for server Finished...\n");
-
-    uint8_t buffer[MAX_PACKET_SIZE];
-    uint8_t msg_type;
-
-    int len = uart_recv_packet(&msg_type, buffer, sizeof(buffer));
-    if (len < 0) {
-        printf("ERROR: No response from server\n");
-        return -1;
-    }
-
-    if (msg_type == MSG_FINISHED) {
-        printf("[Client] Received server Finished\n");
-        handshake_complete = 1;
-        return 0;
-    }
-
-    printf("ERROR: Unexpected message type: %02x\n", msg_type);
-    return -1;
-}
-
-static int client_send_encrypted_data(const char *message) {
-    if (!handshake_complete) {
-        printf("ERROR: Handshake not complete\n");
-        return -1;
-    }
-
-    printf("\n[Client] Sending encrypted data: \"%s\"\n", message);
-
-    uint8_t ciphertext[256];
-    uint8_t tag[16];
-    uint8_t iv[12];
-
-    /* Use incremented IV for each message */
-    memcpy(iv, client_iv, sizeof(iv));
-    iv[11]++;  /* Simple IV increment */
-
-    Aes aes;
-    wc_AesGcmSetKey(&aes, client_key, sizeof(client_key));
-
-    int ret = wc_AesGcmEncrypt(&aes, ciphertext, (uint8_t*)message,
-                                strlen(message), iv, sizeof(iv),
-                                tag, sizeof(tag), NULL, 0);
-    if (ret != 0) {
-        printf("ERROR: Encrypt failed\n");
-        return ret;
-    }
-
-    /* Packet: [iv:12][ciphertext:N][tag:16] */
-    uint8_t packet[284];
-    int pkt_len = 0;
-    memcpy(packet + pkt_len, iv, 12); pkt_len += 12;
-    memcpy(packet + pkt_len, ciphertext, strlen(message)); pkt_len += strlen(message);
-    memcpy(packet + pkt_len, tag, 16); pkt_len += 16;
-
-    uart_send_packet(MSG_ENCRYPTED_DATA, packet, pkt_len);
-
-    print_hex("Ciphertext", ciphertext, strlen(message));
-    return 0;
-}
-
-/*============================================================================
- * Standalone Crypto Demo (runs without server)
- *============================================================================*/
-
-static int standalone_demo(void) {
-    int ret;
+    char buffer[256];
+    const char* msg = "Hello from RISC-V PQC-DTLS 1.3 Client!";
 
     printf("\n========================================\n");
-    printf("  Standalone PQC Demo\n");
-    printf("========================================\n");
+    printf("  DTLS 1.3 Client with ML-KEM\n");
+    printf("========================================\n\n");
 
-    /* ML-KEM Demo */
-    printf("\n=== ML-KEM-512 Key Exchange ===\n");
+    /* Initialize wolfSSL */
+    printf("[DTLS] Initializing wolfSSL...\n");
+    wolfSSL_Init();
+
+#ifdef DEBUG_WOLFSSL
+    wolfSSL_Debugging_ON();
+#endif
+
+    /* Create DTLS 1.3 context */
+    printf("[DTLS] Creating DTLS 1.3 context...\n");
+#ifdef WOLFSSL_DTLS13
+    ctx = wolfSSL_CTX_new(wolfDTLSv1_3_client_method());
+#else
+    ctx = wolfSSL_CTX_new(wolfDTLSv1_2_client_method());
+    printf("[DTLS] Note: Using DTLS 1.2 (DTLS 1.3 not compiled in)\n");
+#endif
+
+    if (ctx == NULL) {
+        printf("ERROR: wolfSSL_CTX_new failed\n");
+        return -1;
+    }
+
+    /* Configure for anonymous/PSK mode (no certificates for demo) */
+    printf("[DTLS] Configuring cipher suites...\n");
+
+#ifdef WOLFSSL_TLS13
+    /* Try to set ML-KEM/Kyber key exchange */
+#if defined(HAVE_LIBOQS) || defined(WOLFSSL_HAVE_KYBER)
+    ret = wolfSSL_CTX_set_groups(ctx, (int[]){1}, 1);
+    if (ret != WOLFSSL_SUCCESS) {
+        printf("[DTLS] ML-KEM not available, using default groups\n");
+    } else {
+        printf("[DTLS] ML-KEM-512 enabled for key exchange\n");
+    }
+#endif
+#endif
+
+    /* Disable certificate verification for demo */
+    wolfSSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+
+    /* Set I/O callbacks */
+    printf("[DTLS] Setting custom I/O callbacks...\n");
+    wolfSSL_CTX_SetIORecv(ctx, dtls_recv_cb);
+    wolfSSL_CTX_SetIOSend(ctx, dtls_send_cb);
+
+    /* Create SSL session */
+    printf("[DTLS] Creating SSL session...\n");
+    ssl = wolfSSL_new(ctx);
+    if (ssl == NULL) {
+        printf("ERROR: wolfSSL_new failed\n");
+        wolfSSL_CTX_free(ctx);
+        return -1;
+    }
+
+    /* Set I/O context */
+    wolfSSL_SetIOReadCtx(ssl, &io_ctx);
+    wolfSSL_SetIOWriteCtx(ssl, &io_ctx);
+
+    /* Set DTLS options */
+    wolfSSL_dtls_set_using_nonblock(ssl, 0);
+
+#ifdef WOLFSSL_DTLS13
+    /* Set MTU for DTLS */
+    wolfSSL_dtls_set_mtu(ssl, 1400);
+#endif
+
+    /* Perform DTLS handshake */
+    printf("[DTLS] Starting handshake...\n");
+
+    do {
+        ret = wolfSSL_connect(ssl);
+        if (ret != WOLFSSL_SUCCESS) {
+            int err = wolfSSL_get_error(ssl, ret);
+            if (err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE) {
+                printf("[DTLS] Handshake in progress (want %s)\n",
+                       err == WOLFSSL_ERROR_WANT_READ ? "read" : "write");
+                /* Service network */
+                for (int i = 0; i < 1000; i++) {
+                    udp_service();
+                }
+            } else {
+                char errStr[80];
+                wolfSSL_ERR_error_string(err, errStr);
+                printf("ERROR: wolfSSL_connect failed: %d (%s)\n", err, errStr);
+                wolfSSL_free(ssl);
+                wolfSSL_CTX_free(ctx);
+                return -1;
+            }
+        }
+    } while (ret != WOLFSSL_SUCCESS);
+
+    printf("\n========================================\n");
+    printf("  DTLS Handshake Complete!\n");
+    printf("========================================\n\n");
+
+    /* Print connection info */
+    printf("[DTLS] Protocol: %s\n", wolfSSL_get_version(ssl));
+    printf("[DTLS] Cipher: %s\n", wolfSSL_get_cipher(ssl));
+
+    /* Send application data */
+    printf("[DTLS] Sending: \"%s\"\n", msg);
+    ret = wolfSSL_write(ssl, msg, strlen(msg));
+    if (ret <= 0) {
+        printf("ERROR: wolfSSL_write failed\n");
+    } else {
+        printf("[DTLS] Sent %d bytes\n", ret);
+    }
+
+    /* Receive response */
+    printf("[DTLS] Waiting for response...\n");
+    memset(buffer, 0, sizeof(buffer));
+    ret = wolfSSL_read(ssl, buffer, sizeof(buffer) - 1);
+    if (ret > 0) {
+        printf("[DTLS] Received: \"%s\"\n", buffer);
+    } else {
+        int err = wolfSSL_get_error(ssl, ret);
+        printf("[DTLS] Read returned %d (error: %d)\n", ret, err);
+    }
+
+    /* Shutdown */
+    printf("[DTLS] Closing connection...\n");
+    wolfSSL_shutdown(ssl);
+    wolfSSL_free(ssl);
+    wolfSSL_CTX_free(ctx);
+    wolfSSL_Cleanup();
+
+    printf("\n*** DTLS 1.3 PQC Demo Complete ***\n");
+
+    return 0;
+}
+
+/*============================================================================
+ * Standalone ML-KEM Test
+ *============================================================================*/
+static int standalone_mlkem_test(void)
+{
+    printf("\n========================================\n");
+    printf("  Standalone ML-KEM-512 Test\n");
+    printf("========================================\n\n");
+
+#if defined(WOLFSSL_HAVE_MLKEM) || defined(WOLFSSL_WC_MLKEM)
+    #include <wolfssl/wolfcrypt/wc_mlkem.h>
+
+    int ret;
+    WC_RNG rng;
+
+    wc_InitRng(&rng);
 
     MlKemKey *alice = wc_MlKemKey_New(WC_ML_KEM_512, NULL, INVALID_DEVID);
     MlKemKey *bob = wc_MlKemKey_New(WC_ML_KEM_512, NULL, INVALID_DEVID);
@@ -371,71 +429,54 @@ static int standalone_demo(void) {
         return -1;
     }
 
-    /* Alice generates key pair */
+    /* Alice: Generate keypair */
     ret = wc_MlKemKey_MakeKey(alice, &rng);
-    if (ret != 0) { printf("KeyGen failed\n"); return ret; }
+    if (ret != 0) {
+        printf("Alice KeyGen failed: %d\n", ret);
+        return ret;
+    }
     printf("Alice: KeyGen OK\n");
 
-    /* Export Alice's public key */
+    /* Alice: Export public key */
     uint8_t alice_pub[WC_ML_KEM_512_PUBLIC_KEY_SIZE];
     wc_MlKemKey_EncodePublicKey(alice, alice_pub, sizeof(alice_pub));
-    print_hex("Alice PubKey", alice_pub, sizeof(alice_pub));
 
-    /* Bob encapsulates */
+    /* Bob: Load Alice's public key and encapsulate */
     wc_MlKemKey_DecodePublicKey(bob, alice_pub, sizeof(alice_pub));
+
     uint8_t ct[WC_ML_KEM_512_CIPHER_TEXT_SIZE];
     uint8_t ss_bob[32], ss_alice[32];
 
     ret = wc_MlKemKey_Encapsulate(bob, ct, ss_bob, &rng);
-    if (ret != 0) { printf("Encaps failed\n"); return ret; }
+    if (ret != 0) {
+        printf("Bob Encaps failed: %d\n", ret);
+        return ret;
+    }
     printf("Bob: Encapsulation OK\n");
-    print_hex("Ciphertext", ct, sizeof(ct));
 
-    /* Alice decapsulates */
+    /* Alice: Decapsulate */
     ret = wc_MlKemKey_Decapsulate(alice, ss_alice, ct, sizeof(ct));
-    if (ret != 0) { printf("Decaps failed\n"); return ret; }
+    if (ret != 0) {
+        printf("Alice Decaps failed: %d\n", ret);
+        return ret;
+    }
     printf("Alice: Decapsulation OK\n");
 
-    print_hex("Bob's SS", ss_bob, 32);
-    print_hex("Alice's SS", ss_alice, 32);
-
+    /* Verify */
     if (memcmp(ss_bob, ss_alice, 32) == 0) {
-        printf("\n*** ML-KEM SUCCESS: Shared secrets match! ***\n");
+        printf("\n*** ML-KEM SUCCESS - Shared secrets match! ***\n");
     } else {
-        printf("\n*** ML-KEM ERROR: Mismatch! ***\n");
+        printf("\n*** ML-KEM FAILED - Secrets don't match ***\n");
     }
 
     wc_MlKemKey_Free(alice);
     wc_MlKemKey_Free(bob);
+    wc_FreeRng(&rng);
 
-    /* AES-GCM Demo */
-    printf("\n=== AES-128-GCM ===\n");
-    uint8_t aes_key[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-    uint8_t iv[12], tag[16];
-    const char *plaintext = "Hello from RISC-V PQC Client!";
-    uint8_t ciphertext[64], decrypted[64];
-
-    wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
-
-    Aes aes;
-    wc_AesGcmSetKey(&aes, aes_key, sizeof(aes_key));
-    ret = wc_AesGcmEncrypt(&aes, ciphertext, (uint8_t*)plaintext,
-                           strlen(plaintext), iv, sizeof(iv),
-                           tag, sizeof(tag), NULL, 0);
-    if (ret != 0) { printf("Encrypt failed\n"); return ret; }
-
-    printf("Plaintext:  \"%s\"\n", plaintext);
-    print_hex("Ciphertext", ciphertext, strlen(plaintext));
-    print_hex("Tag", tag, sizeof(tag));
-
-    ret = wc_AesGcmDecrypt(&aes, decrypted, ciphertext,
-                           strlen(plaintext), iv, sizeof(iv),
-                           tag, sizeof(tag), NULL, 0);
-    if (ret == 0) {
-        decrypted[strlen(plaintext)] = 0;
-        printf("Decrypted:  \"%s\"\n", decrypted);
-        printf("\n*** AES-GCM SUCCESS! ***\n");
-    }
+#else
+    printf("ML-KEM not compiled in. Enable with:\n");
+    printf("  WOLFSSL_HAVE_MLKEM or WOLFSSL_WC_MLKEM\n");
+#endif
 
     return 0;
 }
@@ -443,8 +484,8 @@ static int standalone_demo(void) {
 /*============================================================================
  * Main Entry Point
  *============================================================================*/
-
-int main(void) {
+int main(void)
+{
 #ifdef CONFIG_CPU_HAS_INTERRUPT
     irq_setmask(0);
     irq_setie(1);
@@ -453,72 +494,33 @@ int main(void) {
 
     printf("\n\n");
     printf("========================================\n");
-    printf("  PQC-DTLS Client for RISC-V IoT\n");
-    printf("  Inter IIT Tech Meet 14.0\n");
-    printf("========================================\n");
-    printf("\n");
+    printf("  PQC-DTLS 1.3 Client (LiteETH)\n");
+    printf("  wolfSSL + ML-KEM-512\n");
+    printf("========================================\n\n");
 
-    /* Initialize RNG */
-    if (wc_InitRng(&rng) != 0) {
-        printf("ERROR: RNG init failed\n");
-        return -1;
+    /* Initialize network */
+    if (pqc_eth_init() != 0) {
+        printf("ERROR: Network init failed\n");
+        // printf("Running standalone ML-KEM test only...\n");
+        // standalone_mlkem_test();
+        goto idle;
     }
-    printf("RNG initialized\n");
 
-    /* Run standalone demo first */
-    standalone_demo();
+    /* Run standalone test first */
+    // standalone_mlkem_test();
 
-    /* Print key sizes */
-    printf("\n========================================\n");
-    printf("  ML-KEM-512 Key Sizes:\n");
-    printf("    Public Key:  %d bytes\n", WC_ML_KEM_512_PUBLIC_KEY_SIZE);
-    printf("    Secret Key:  %d bytes\n", WC_ML_KEM_512_PRIVATE_KEY_SIZE);
-    printf("    Ciphertext:  %d bytes\n", WC_ML_KEM_512_CIPHER_TEXT_SIZE);
-    printf("    Shared Secret: %d bytes\n", WC_ML_KEM_SS_SZ);
-    printf("========================================\n");
+    /* Small delay */
+    printf("\n[Main] Waiting for network to settle...\n");
+    for (volatile int i = 0; i < 1000000; i++);
 
-    /* Client mode - connect to server */
-    printf("\n========================================\n");
-    printf("  Client Mode\n");
-    printf("  Waiting for server connection...\n");
-    printf("  (Press any key or send data to start)\n");
-    printf("========================================\n");
+    /* Run DTLS client */
+    dtls13_pqc_client();
 
-    /* Wait for trigger */
-    while (!uart_read_nonblock()) {
-        /* Idle */
+idle:
+    printf("\nEntering idle loop...\n");
+    while (1) {
+        udp_service();
     }
-    uart_read();  /* Consume the trigger byte */
 
-    printf("\n[Client] Starting handshake...\n");
-
-    /* Perform handshake */
-    if (client_send_hello() != 0) goto error;
-    if (client_key_exchange() != 0) goto error;
-    if (client_send_finished() != 0) goto error;
-    if (client_wait_server_finished() != 0) goto error;
-
-    printf("\n========================================\n");
-    printf("  Handshake Complete!\n");
-    printf("========================================\n");
-
-    /* Send encrypted application data */
-    client_send_encrypted_data("Hello from RISC-V PQC-DTLS Client!");
-    client_send_encrypted_data("This message is encrypted with AES-GCM");
-
-    printf("\n*** PQC-DTLS Communication Successful! ***\n");
-    goto cleanup;
-
-error:
-    printf("\n*** Handshake Failed ***\n");
-
-cleanup:
-    wc_FreeRng(&rng);
-
-    printf("\n========================================\n");
-    printf("  Demo Complete\n");
-    printf("========================================\n");
-
-    while(1);
     return 0;
 }

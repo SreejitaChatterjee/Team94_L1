@@ -2,90 +2,97 @@
 #define USER_SETTINGS_H
 
 /*============================================================================
- * PQC Demo Configuration for Bare-Metal RISC-V
+ * PQC-DTLS 1.3 Configuration for Bare-Metal RISC-V
  * Inter IIT Tech Meet 14.0 - QTrino Labs Challenge
  *
- * wolfCrypt-only build for:
- * - ML-KEM-512 (Kyber) post-quantum key encapsulation
- * - SHA3-256 / SHA-256 hashing
- * - AES-128-GCM authenticated encryption
+ * Full wolfSSL build with DTLS 1.3 and ML-KEM support
  *============================================================================*/
 
-/*--- Core Configuration ---*/
-#define WOLFCRYPT_ONLY          /* No SSL/TLS, just crypto primitives */
+#include <stddef.h>
+#include <sys/types.h>
 
-/*--- ML-KEM (Kyber) Post-Quantum Key Encapsulation ---*/
-#define WOLFSSL_WC_MLKEM
-#define WOLFSSL_HAVE_MLKEM
-#define WOLFSSL_MLKEM_ENCAPSULATE_SMALL_MEM  /* Memory optimization */
-#define WOLFSSL_MLKEM_MAKEKEY_SMALL_MEM      /* Memory optimization */
+/*--- Math Backend ---*/
+#define WOLFSSL_SP_MATH
 
-/*--- Hash Algorithms ---*/
-#define WOLFSSL_SHA3            /* SHA3-256 (required for ML-KEM) */
-#define WOLFSSL_SHAKE256        /* SHAKE256 (required for ML-KEM) */
-#define WOLFSSL_SHAKE128        /* SHAKE128 (required for ML-KEM) */
-#define WOLFSSL_SHA256          /* SHA-256 for key derivation */
-
-/*--- AES-GCM Authenticated Encryption ---*/
-#define HAVE_AESGCM
-#define GCM_SMALL               /* Memory-optimized GCM */
-#define WOLFSSL_AES_SMALL_TABLES
-#define WOLFSSL_AES_DIRECT
-
-/*--- Disable Unused Features (save memory) ---*/
-#define NO_RSA
-#define NO_DH
-#define NO_DSA
-#define NO_ECC
-#define NO_DES3
-#define NO_RC4
-#define NO_MD4
-#define NO_MD5
-#define NO_SHA                  /* We use SHA-256 and SHA3 instead */
-#define NO_PWDBASED
-#define NO_PKCS12
-#define NO_PKCS7
-#define NO_OLD_TLS
-#define NO_RABBIT
-#define NO_HC128
-#define NO_IDEA
-#define NO_CAMELLIA
-#define NO_CODING
-#define NO_SIG_WRAPPER
-#define WC_NO_ASYNC_THREADING
-
-/*--- Time Configuration ---*/
-#define NO_TIME_H
-#define WOLFSSL_NO_CLOCK
-#define NO_ASN_TIME
-#define USER_TIME
-/* XTIME is defined in main.c */
-
-/*--- Embedded System Configuration ---*/
-#define SINGLE_THREADED
-#define NO_FILESYSTEM
-#define NO_WOLFSSL_DIR
+/*--- No OS/Socket Layer ---*/
 #define WOLFSSL_NO_SOCK
 #define NO_WRITEV
 
 /*--- Memory Optimizations ---*/
 #define WOLFSSL_SMALL_STACK
-#define WOLFSSL_SMALL_STACK_CACHE
-#define NO_ERROR_STRINGS        /* Save ~10KB */
+#define WOLFSSL_SMALL_CERT_VERIFY
+#define WOLFSSL_SMALL_SESSION_CACHE
 
-/*--- Math Library (optimized for 32-bit RISC-V) ---*/
-#define WOLFSSL_SP_MATH_ALL
+/*--- Disable Unused Features ---*/
+#define NO_FILESYSTEM
+#define SINGLE_THREADED
+#define NO_ERROR_STRINGS
+
+/*--- Time Configuration ---*/
+#define NO_TIME_H
+#define USER_TIME
+/* XTIME() defined in main.c */
+
+/*--- TLS/DTLS Protocol Support ---*/
+#define WOLFSSL_TLS13
+#define WOLFSSL_DTLS
+#define WOLFSSL_DTLS13
+#define HAVE_TLS_EXTENSIONS
+#define WOLFSSL_DTLS_CH_FRAG
+#define WOLFSSL_DTLS13_NO_HRR_ON_RESUME
+#define WOLFSSL_SEND_HRR_COOKIE
+
+/*--- Elliptic Curve Cryptography ---*/
+#define HAVE_ECC
+#define ECC_TIMING_RESISTANT
+#define HAVE_CURVE25519
+#define HAVE_X25519
+#define HAVE_ED25519
+#define ECC256
+
+/*--- RSA ---*/
+#define WC_RSA_BLINDING
+#define WC_RSA_PSS
+
+/*--- Hash Algorithms ---*/
+#define WOLFSSL_SHA256
+#define WOLFSSL_SHA512
+
+/*--- AES-GCM Symmetric Encryption ---*/
+#define HAVE_AESGCM
+#define WOLFSSL_AES_DIRECT
+
+/*--- Key Derivation ---*/
+#define HAVE_HKDF
+
+/*--- Key Generation ---*/
+#define WOLFSSL_KEY_GEN
+
+/*--- ML-KEM (Kyber) Post-Quantum Support ---*/
+#define WOLFSSL_HAVE_MLKEM
+#define WOLFSSL_WC_MLKEM
+#define WOLFSSL_MLKEM_ENCAPSULATE_SMALL_MEM
+#define WOLFSSL_MLKEM_MAKEKEY_SMALL_MEM
+
+/*--- SHA3/SHAKE (required for ML-KEM) ---*/
+#define WOLFSSL_SHA3
+#define WOLFSSL_SHAKE128
+#define WOLFSSL_SHAKE256
+
+/*--- SP Math Optimizations ---*/
+#define WOLFSSL_SP
 #define WOLFSSL_SP_SMALL
-#define SP_WORD_SIZE 32
-#define WOLFSSL_SP_NO_MALLOC
+#define WOLFSSL_HAVE_SP_RSA
+#define WOLFSSL_HAVE_SP_ECC
 
-/*--- Custom RNG Seed ---*/
+/*--- Custom RNG ---*/
 extern int CustomRngGenerateBlock(unsigned char *, unsigned int);
 #define CUSTOM_RAND_GENERATE_SEED CustomRngGenerateBlock
 #define HAVE_HASHDRBG
-#define WC_NO_HASHDRBG_RESEED
 
-/*--- Debug (uncomment for debugging) ---*/
-/* #define DEBUG_WOLFSSL */
+/*--- Debug (comment out for production) ---*/
+#define DEBUG_WOLFSSL
+#define SHOW_GEN
+#define DEBUG_WOLFSSL_VERBOSE
 
 #endif /* USER_SETTINGS_H */

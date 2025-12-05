@@ -12,6 +12,9 @@ OBJECTS += $(SRCS:.c=.o)
 
 INC  = -I./wolfssl -I./wolfssl/wolfcrypt -I.
 
+# INC = -I/usr/local/include/wolfssl
+
+
 all: boot.bin
 
 %.bin: %.elf
@@ -22,7 +25,7 @@ endif
 
 vpath %.a $(PACKAGES:%=../%)
 
-CFLAGS += $(INC) 
+CFLAGS += $(INC)
 CFLAGS += -DWOLFSSL_USER_SETTINGS
 CFLAGS += -DWOLFSSL_SMALL_STACK
 CFLAGS += -DWOLFSSL_STATIC_MEMORY
